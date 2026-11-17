@@ -8,6 +8,7 @@ struct GameController: RouteCollection {
         games.post(use: create)
         games.get(":gameID", use: show)
         games.put(":gameID", use: update)
+        games.delete(":gameID", use: delete)
     }
 
     @Sendable
@@ -47,6 +48,17 @@ struct GameController: RouteCollection {
         game.durationMinutes = dto.durationMinutes
         try await game.save(on: req.db)
         return game.toDTO()
+    }
+
+    @Sendable
+    func delete(req: Request) async throws -> HTTPStatus {
+        let game = try await findGame(req)
+        // Any loan counts, even a returned one: the loan history must be kept.
+        guard game.loans.isEmpty else {
+            throw Abort(.conflict, reason: "A game with loans cannot be deleted")
+        }
+        try await game.delete(on: req.db)
+        return .noContent
     }
 
     private func findGame(_ req: Request) async throws -> Game {
