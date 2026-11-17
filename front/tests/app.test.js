@@ -65,6 +65,67 @@ test("a validation error is shown in French and the dialog stays open", async ()
   assertTrue(app.$("#game-dialog").open, "la boîte devrait rester ouverte");
 });
 
+test("editing a game opens a prefilled form and sends a PUT", async () => {
+  const app = await mountApp({ "GET /games": [catan], "PUT /games/g1": { ...catan, title: "Catan Junior" } });
+  await waitFor(() => app.$$("#games-list .card").length === 1);
+  app.click("Modifier", cardOf(app, "Catan"));
+  await waitFor(() => app.$("#game-dialog").open, "la boîte de modification");
+  const form = app.$("#game-form");
+  assertEqual(app.$("#game-dialog-title").textContent, "Modifier « Catan »");
+  assertEqual(form.elements.title.value, "Catan");
+  assertEqual(form.elements.durationMinutes.value, "90");
+  form.elements.title.value = "Catan Junior";
+  form.requestSubmit();
+  await waitFor(() => app.calls.some((call) => call.method === "PUT"), "l'appel PUT /games/g1");
+  const put = app.calls.find((call) => call.method === "PUT");
+  assertEqual(put.path, "/games/g1");
+  assertEqual(put.body, { title: "Catan Junior", minPlayers: 3, maxPlayers: 4, durationMinutes: 90 });
+  await waitFor(() => !app.$("#game-dialog").open, "la boîte se ferme");
+});
+
+test("adding a game after an edit starts from an empty form", async () => {
+  const app = await mountApp({ "GET /games": [catan] });
+  await waitFor(() => app.$$("#games-list .card").length === 1);
+  app.click("Modifier", cardOf(app, "Catan"));
+  app.click("Annuler", app.$("#game-dialog"));
+  app.click("Ajouter un jeu");
+  assertEqual(app.$("#game-dialog-title").textContent, "Ajouter un jeu");
+  assertEqual(app.$("#game-form").elements.title.value, "");
+});
+
+test("deleting a game asks for confirmation, then removes it from the list", async () => {
+  let games = [catan, dixit];
+  const app = await mountApp({
+    "GET /games": () => games,
+    "DELETE /games/g1": () => {
+      games = [dixit];
+      return [204];
+    },
+  });
+  await waitFor(() => app.$$("#games-list .card").length === 2);
+  app.click("Supprimer", cardOf(app, "Catan"));
+  await waitFor(() => app.$("#delete-game-dialog").open, "la confirmation");
+  assertIncludes(app.$("#delete-game-dialog-title").textContent, "Catan");
+  assertTrue(!app.calls.some((call) => call.method === "DELETE"), "rien ne doit partir avant la confirmation");
+  app.click("Supprimer", app.$("#delete-game-dialog"));
+  await waitFor(() => app.$$("#games-list .card").length === 1, "Catan disparaît de la liste");
+  assertTrue(!cardOf(app, "Catan"), "la carte de Catan ne doit plus exister");
+  assertTrue(!app.$("#delete-game-dialog").open, "la confirmation se ferme");
+});
+
+test("a game with a loan history cannot be deleted: French message, confirmation stays open", async () => {
+  const app = await mountApp({
+    "GET /games": [catan],
+    "DELETE /games/g1": [409, { error: true, reason: "A game with loans cannot be deleted" }],
+  });
+  await waitFor(() => app.$$("#games-list .card").length === 1);
+  app.click("Supprimer", cardOf(app, "Catan"));
+  app.click("Supprimer", app.$("#delete-game-dialog"));
+  await waitFor(() => !app.$("#delete-game-dialog .form-error").hidden, "le message d'erreur");
+  assertIncludes(app.$("#delete-game-dialog .form-error").textContent, "historique d'emprunts");
+  assertTrue(app.$("#delete-game-dialog").open, "la confirmation devrait rester ouverte");
+});
+
 // --- Emprunts
 
 test("borrowing a game sends the game and the chosen member", async () => {
