@@ -9,6 +9,7 @@ struct MemberController: RouteCollection {
         members.get(":memberID", use: show)
         members.put(":memberID", use: update)
         members.delete(":memberID", use: delete)
+        members.get(":memberID", "loans", use: loans)
     }
 
     @Sendable
@@ -69,6 +70,16 @@ struct MemberController: RouteCollection {
         }
         try await member.delete(on: req.db)
         return .noContent
+    }
+
+    @Sendable
+    func loans(req: Request) async throws -> [LoanDTO] {
+        let member = try await findMember(req)
+        // Returned or not, from the oldest to the most recent. An empty list is a valid answer.
+        return try await member.$loans.query(on: req.db)
+            .sort(\.$borrowedAt, .ascending)
+            .all()
+            .map { $0.toDTO() }
     }
 
     private func findMember(_ req: Request) async throws -> Member {

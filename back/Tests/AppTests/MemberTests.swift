@@ -114,6 +114,55 @@ final class MemberTests: XCTestCase {
         }
     }
 
+    // MARK: - GET /members/:memberID/loans
+
+    func testMemberLoansListsReturnedAndOngoingLoansOldestFirst() async throws {
+        try await withApp { app in
+            let catan = try await createGame(app, title: "Catan")
+            let dixit = try await createGame(app, title: "Dixit")
+            let member = try await createMember(app)
+            let memberID = try XCTUnwrap(member.id)
+            let now = Date()
+            // Inserted newest first, to check that the API sorts them.
+            try await insertLoan(
+                app, gameID: try XCTUnwrap(dixit.id), memberID: memberID,
+                borrowedAt: now.addingTimeInterval(-86_400), dueAt: now.addingTimeInterval(13 * 86_400)
+            )
+            try await insertLoan(
+                app, gameID: try XCTUnwrap(catan.id), memberID: memberID,
+                borrowedAt: now.addingTimeInterval(-20 * 86_400), dueAt: now.addingTimeInterval(-6 * 86_400),
+                returnedAt: now.addingTimeInterval(-7 * 86_400)
+            )
+
+            try await app.test(.GET, "members/\(memberID)/loans", afterResponse: { res async throws in
+                XCTAssertEqual(res.status, .ok)
+                let loans = try res.content.decode([LoanDTO].self)
+                XCTAssertEqual(loans.map(\.gameID), [catan.id, dixit.id])
+                XCTAssertNotNil(loans[0].returnedAt)
+                XCTAssertNil(loans[1].returnedAt)
+            })
+        }
+    }
+
+    func testMemberWithoutLoansGetsAnEmptyList() async throws {
+        try await withApp { app in
+            let member = try await createMember(app)
+
+            try await app.test(.GET, "members/\(try XCTUnwrap(member.id))/loans", afterResponse: { res async throws in
+                XCTAssertEqual(res.status, .ok)
+                XCTAssertEqual(try res.content.decode([LoanDTO].self).count, 0)
+            })
+        }
+    }
+
+    func testLoansOfUnknownMemberReturnsNotFound() async throws {
+        try await withApp { app in
+            try await app.test(.GET, "members/\(UUID())/loans", afterResponse: { res async throws in
+                XCTAssertEqual(res.status, .notFound)
+            })
+        }
+    }
+
     // MARK: - DELETE /members/:memberID
 
     func testDeleteMemberRemovesThem() async throws {
