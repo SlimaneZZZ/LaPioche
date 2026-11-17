@@ -7,6 +7,7 @@ struct MemberController: RouteCollection {
         members.get(use: index)
         members.post(use: create)
         members.get(":memberID", use: show)
+        members.put(":memberID", use: update)
     }
 
     @Sendable
@@ -33,12 +34,37 @@ struct MemberController: RouteCollection {
 
     @Sendable
     func show(req: Request) async throws -> MemberDTO {
+        try await findMember(req).toDTO()
+    }
+
+    @Sendable
+    func update(req: Request) async throws -> MemberDTO {
+        try CreateMemberDTO.validate(content: req)
+        let dto = try req.content.decode(CreateMemberDTO.self)
+
+        let member = try await findMember(req)
+        // Keeping one's own email is not a conflict: only look at the other members.
+        let emailTakenByAnother = try await Member.query(on: req.db)
+            .filter(\.$email == dto.email)
+            .filter(\.$id != member.requireID())
+            .count() > 0
+        guard !emailTakenByAnother else {
+            throw Abort(.conflict, reason: "A member with this email already exists")
+        }
+
+        member.name = dto.name
+        member.email = dto.email
+        try await member.save(on: req.db)
+        return member.toDTO()
+    }
+
+    private func findMember(_ req: Request) async throws -> Member {
         guard let memberID = req.parameters.get("memberID", as: UUID.self) else {
             throw Abort(.badRequest, reason: "Invalid member id")
         }
         guard let member = try await Member.find(memberID, on: req.db) else {
             throw Abort(.notFound, reason: "Member not found")
         }
-        return member.toDTO()
+        return member
     }
 }
