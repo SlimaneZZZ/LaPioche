@@ -105,6 +105,8 @@ function gameCard(game) {
   const actions = el("div", { class: "actions" });
   if (game.isAvailable) {
     actions.append(button("Emprunter", () => openBorrowDialog(game), "primary"));
+  } else {
+    actions.append(button("Rendre", () => returnGame(game), "primary"));
   }
   actions.append(
     button("Modifier", () => openGameDialog(game)),
@@ -196,6 +198,28 @@ bindSubmit(borrowDialog, borrowForm, async (data) => {
   const loan = await api.borrow(borrowedGame.id, data.get("memberID"));
   toast(`« ${borrowedGame.title} » emprunté, à rendre avant le ${formatDate(loan.dueAt)}.`);
 });
+
+// L'API ne donne pas l'emprunt en cours d'un jeu : on parcourt les emprunts de
+// chaque adhérent·e (GET /members/:id/loans) pour retrouver celui qui n'est pas rendu.
+async function findOngoingLoan(game) {
+  const members = await api.listMembers();
+  const loansByMember = await Promise.all(members.map((member) => api.listMemberLoans(member.id)));
+  // `returnedAt` est absent du JSON tant que l'emprunt n'est pas rendu.
+  const loan = loansByMember.flat().find((loan) => loan.gameID === game.id && !loan.returnedAt);
+  if (!loan) {
+    throw new Error("Impossible de retrouver l'emprunt en cours de ce jeu.");
+  }
+  return loan;
+}
+
+async function returnGame(game) {
+  await run(async () => {
+    const loan = await findOngoingLoan(game);
+    await api.returnLoan(loan.id);
+    toast(`« ${game.title} » a été rendu.`);
+    await loadGames();
+  });
+}
 
 // --- Adhérent·es -----------------------------------------------------------
 

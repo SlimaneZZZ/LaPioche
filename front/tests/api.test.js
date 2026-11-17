@@ -69,6 +69,15 @@ test("updateMember sends a JSON PUT and deleteMember a DELETE", async () => {
   assertEqual(result, null);
 });
 
+test("listMemberLoans and returnLoan call their routes", async () => {
+  const { fetch, calls } = fakeApi({ "GET /members/m1/loans": [], "POST /loans/l1/return": { id: "l1" } });
+  await withFakeFetch(fetch, () => api.listMemberLoans("m1"));
+  await withFakeFetch(fetch, () => api.returnLoan("l1"));
+  assertEqual(`${calls[0].method} ${calls[0].path}`, "GET /members/m1/loans");
+  assertEqual(`${calls[1].method} ${calls[1].path}`, "POST /loans/l1/return");
+  assertEqual(calls[1].body, undefined);
+});
+
 test("borrow sends the game and the member", async () => {
   const { fetch, calls } = fakeApi({ "POST /loans": [201, { id: "l1" }] });
   await withFakeFetch(fetch, () => api.borrow("g1", "m1"));
