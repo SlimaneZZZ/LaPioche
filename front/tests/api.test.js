@@ -58,6 +58,17 @@ test("deleteGame sends a DELETE and accepts an empty 204 response", async () => 
   assertEqual(result, null);
 });
 
+test("updateMember sends a JSON PUT and deleteMember a DELETE", async () => {
+  const { fetch, calls } = fakeApi({ "PUT /members/m1": { id: "m1" }, "DELETE /members/m1": [204] });
+  const member = { name: "Camille D.", email: "camille.d@example.com" };
+  await withFakeFetch(fetch, () => api.updateMember("m1", member));
+  const result = await withFakeFetch(fetch, () => api.deleteMember("m1"));
+  assertEqual(`${calls[0].method} ${calls[0].path}`, "PUT /members/m1");
+  assertEqual(calls[0].body, member);
+  assertEqual(`${calls[1].method} ${calls[1].path}`, "DELETE /members/m1");
+  assertEqual(result, null);
+});
+
 test("borrow sends the game and the member", async () => {
   const { fetch, calls } = fakeApi({ "POST /loans": [201, { id: "l1" }] });
   await withFakeFetch(fetch, () => api.borrow("g1", "m1"));

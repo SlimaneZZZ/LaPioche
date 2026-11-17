@@ -210,20 +210,53 @@ function memberRow(member) {
     "li",
     { class: "row" },
     el("div", { class: "row-main" }, el("p", {}, el("strong", {}, member.name)), el("p", { class: "meta" }, member.email)),
+    el(
+      "div",
+      { class: "actions" },
+      button("Modifier", () => openMemberDialog(member)),
+      button("Supprimer", () => openDeleteMemberDialog(member), "danger"),
+    ),
   );
 }
 
 const memberDialog = $("#member-dialog");
 const memberForm = $("#member-form");
+// Même principe que pour les jeux : null pour un ajout, l'adhérent·e modifié·e sinon.
+let editedMember = null;
 
-$("#add-member").addEventListener("click", () => {
+function openMemberDialog(member = null) {
+  editedMember = member;
   memberForm.reset();
+  $("#member-dialog-title").textContent = member ? `Modifier « ${member.name} »` : "Ajouter un·e adhérent·e";
+  if (member) {
+    memberForm.elements.name.value = member.name;
+    memberForm.elements.email.value = member.email;
+  }
   showFormError(memberDialog, null);
   memberDialog.showModal();
+}
+
+$("#add-member").addEventListener("click", () => openMemberDialog());
+
+bindSubmit(memberDialog, memberForm, (data) => {
+  const member = { name: data.get("name").trim(), email: data.get("email").trim() };
+  return editedMember ? api.updateMember(editedMember.id, member) : api.createMember(member);
 });
 
-bindSubmit(memberDialog, memberForm, (data) =>
-  api.createMember({ name: data.get("name").trim(), email: data.get("email").trim() }),
-);
+const deleteMemberDialog = $("#delete-member-dialog");
+const deleteMemberForm = $("#delete-member-form");
+let deletedMember = null;
+
+function openDeleteMemberDialog(member) {
+  deletedMember = member;
+  $("#delete-member-dialog-title").textContent = `Supprimer « ${member.name} » ?`;
+  showFormError(deleteMemberDialog, null);
+  deleteMemberDialog.showModal();
+}
+
+bindSubmit(deleteMemberDialog, deleteMemberForm, async () => {
+  await api.deleteMember(deletedMember.id);
+  toast(`« ${deletedMember.name} » a été supprimé·e.`);
+});
 
 refresh();

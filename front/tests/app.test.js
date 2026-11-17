@@ -178,6 +178,83 @@ test("adding a member posts the form", async () => {
   assertEqual(app.calls.find((call) => call.method === "POST").body, { name: "Camille", email: "camille@example.com" });
 });
 
+const rowOf = (app, name) => app.$$("#members-list .row").find((row) => row.querySelector("strong").textContent === name);
+
+test("editing a member opens a prefilled form and sends a PUT", async () => {
+  const app = await mountApp(
+    { "GET /members": [camille], "PUT /members/m1": { ...camille, name: "Camille D." } },
+    { hash: "#members" },
+  );
+  await waitFor(() => app.$$("#members-list .row").length === 1);
+  app.click("Modifier", rowOf(app, "Camille"));
+  await waitFor(() => app.$("#member-dialog").open, "la boîte de modification");
+  const form = app.$("#member-form");
+  assertEqual(app.$("#member-dialog-title").textContent, "Modifier « Camille »");
+  assertEqual(form.elements.email.value, "camille@example.com");
+  form.elements.name.value = "Camille D.";
+  form.requestSubmit();
+  await waitFor(() => app.calls.some((call) => call.method === "PUT"), "l'appel PUT /members/m1");
+  const put = app.calls.find((call) => call.method === "PUT");
+  assertEqual(put.path, "/members/m1");
+  // Son propre e-mail est renvoyé tel quel : ce n'est pas un conflit.
+  assertEqual(put.body, { name: "Camille D.", email: "camille@example.com" });
+  await waitFor(() => !app.$("#member-dialog").open, "la boîte se ferme");
+});
+
+test("an email used by another member is shown in French and the edit form stays open", async () => {
+  const app = await mountApp(
+    {
+      "GET /members": [camille],
+      "PUT /members/m1": [409, { error: true, reason: "A member with this email already exists" }],
+    },
+    { hash: "#members" },
+  );
+  await waitFor(() => app.$$("#members-list .row").length === 1);
+  app.click("Modifier", rowOf(app, "Camille"));
+  app.$("#member-form").elements.email.value = "alex@example.com";
+  app.$("#member-form").requestSubmit();
+  await waitFor(() => !app.$("#member-dialog .form-error").hidden, "le message d'erreur");
+  assertIncludes(app.$("#member-dialog .form-error").textContent, "utilise déjà cette adresse e-mail");
+  assertTrue(app.$("#member-dialog").open, "le formulaire devrait rester ouvert");
+});
+
+test("deleting a member asks for confirmation, then removes them from the list", async () => {
+  let members = [camille];
+  const app = await mountApp(
+    {
+      "GET /members": () => members,
+      "DELETE /members/m1": () => {
+        members = [];
+        return [204];
+      },
+    },
+    { hash: "#members" },
+  );
+  await waitFor(() => app.$$("#members-list .row").length === 1);
+  app.click("Supprimer", rowOf(app, "Camille"));
+  await waitFor(() => app.$("#delete-member-dialog").open, "la confirmation");
+  assertTrue(!app.calls.some((call) => call.method === "DELETE"), "rien ne doit partir avant la confirmation");
+  app.click("Supprimer", app.$("#delete-member-dialog"));
+  await waitFor(() => app.$$("#members-list .row").length === 0, "Camille disparaît de la liste");
+  assertTrue(!app.$("#delete-member-dialog").open, "la confirmation se ferme");
+});
+
+test("a member with a loan history cannot be deleted: French message, confirmation stays open", async () => {
+  const app = await mountApp(
+    {
+      "GET /members": [camille],
+      "DELETE /members/m1": [409, { error: true, reason: "A member with loans cannot be deleted" }],
+    },
+    { hash: "#members" },
+  );
+  await waitFor(() => app.$$("#members-list .row").length === 1);
+  app.click("Supprimer", rowOf(app, "Camille"));
+  app.click("Supprimer", app.$("#delete-member-dialog"));
+  await waitFor(() => !app.$("#delete-member-dialog .form-error").hidden, "le message d'erreur");
+  assertIncludes(app.$("#delete-member-dialog .form-error").textContent, "historique d'emprunts");
+  assertTrue(app.$("#delete-member-dialog").open, "la confirmation devrait rester ouverte");
+});
+
 test("an email already in use is shown in French", async () => {
   const app = await mountApp(
     { "GET /members": [], "POST /members": [409, { error: true, reason: "A member with this email already exists" }] },
