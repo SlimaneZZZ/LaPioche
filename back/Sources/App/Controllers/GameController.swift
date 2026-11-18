@@ -13,9 +13,24 @@ struct GameController: RouteCollection {
 
     @Sendable
     func index(req: Request) async throws -> [GameDTO] {
-        let games = try await Game.query(on: req.db)
-            .with(\.$loans)
-            .all()
+        try GameSearchQuery.validate(query: req)
+        let search = try req.query.decode(GameSearchQuery.self)
+
+        let query = Game.query(on: req.db).with(\.$loans)
+        if let players = search.players {
+            // Playable by this many players: minPlayers <= players <= maxPlayers.
+            query.filter(\.$minPlayers <= players).filter(\.$maxPlayers >= players)
+        }
+        if let maxDuration = search.maxDuration {
+            query.filter(\.$durationMinutes <= maxDuration)
+        }
+        var games = try await query.all()
+
+        // The title is filtered in Swift: SQLite's LIKE ignores case for ASCII
+        // letters only, so "é" would not match "É".
+        if let text = search.q, !text.isEmpty {
+            games = games.filter { $0.title.range(of: text, options: .caseInsensitive) != nil }
+        }
         return games.map { $0.toDTO() }
     }
 

@@ -53,6 +53,57 @@ final class GameTests: XCTestCase {
         }
     }
 
+    func testSearchGamesByTitleIgnoresCase() async throws {
+        try await withApp { app in
+            _ = try await createGame(app, title: "Catan")
+            _ = try await createGame(app, title: "Dixit")
+
+            try await app.test(.GET, "games?q=CAT", afterResponse: { res async throws in
+                XCTAssertEqual(res.status, .ok)
+                XCTAssertEqual(try res.content.decode([GameDTO].self).map(\.title), ["Catan"])
+            })
+        }
+    }
+
+    func testSearchGamesByPlayersAndMaxDurationCombined() async throws {
+        try await withApp { app in
+            _ = try await createGame(app, title: "Catan", minPlayers: 3, maxPlayers: 4, durationMinutes: 90)
+            _ = try await createGame(app, title: "Skyjo", minPlayers: 2, maxPlayers: 8, durationMinutes: 30)
+            _ = try await createGame(app, title: "Patchwork", minPlayers: 2, maxPlayers: 2, durationMinutes: 30)
+
+            // 4 players: Catan and Skyjo. At most 60 minutes: Skyjo only.
+            try await app.test(.GET, "games?players=4", afterResponse: { res async throws in
+                let titles = try res.content.decode([GameDTO].self).map(\.title)
+                XCTAssertEqual(Set(titles), ["Catan", "Skyjo"])
+            })
+            try await app.test(.GET, "games?players=4&maxDuration=60", afterResponse: { res async throws in
+                XCTAssertEqual(res.status, .ok)
+                XCTAssertEqual(try res.content.decode([GameDTO].self).map(\.title), ["Skyjo"])
+            })
+        }
+    }
+
+    func testSearchGamesWithNoMatchReturnsAnEmptyList() async throws {
+        try await withApp { app in
+            _ = try await createGame(app, title: "Catan")
+
+            try await app.test(.GET, "games?q=zzz", afterResponse: { res async throws in
+                XCTAssertEqual(res.status, .ok)
+                XCTAssertEqual(try res.content.decode([GameDTO].self).count, 0)
+            })
+        }
+    }
+
+    func testSearchGamesRejectsInvalidNumbers() async throws {
+        try await withApp { app in
+            for query in ["players=0", "players=-2", "players=abc", "maxDuration=0", "maxDuration=1.5"] {
+                try await app.test(.GET, "games?\(query)", afterResponse: { res async throws in
+                    XCTAssertEqual(res.status, .badRequest, query)
+                })
+            }
+        }
+    }
+
     func testShowGame() async throws {
         try await withApp { app in
             let game = try await createGame(app)
