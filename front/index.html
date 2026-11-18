@@ -23,7 +23,14 @@
         <h2>Jeux</h2>
         <button type="button" id="add-game" class="primary">Ajouter un jeu</button>
       </div>
+      <form id="game-filters" class="filters" role="search" novalidate>
+        <label>Titre <input type="search" name="q" placeholder="Ex. : Catan"></label>
+        <label>Nombre de joueur·ses <input type="number" name="players" min="1" step="1"></label>
+        <label>Durée max (minutes) <input type="number" name="maxDuration" min="1" step="1"></label>
+        <button type="button" id="reset-search">Réinitialiser</button>
+      </form>
       <p id="games-empty" class="empty" hidden>La ludothèque ne contient aucun jeu pour le moment. Cliquez sur « Ajouter un jeu » pour créer le premier.</p>
+      <p id="games-no-match" class="empty" hidden>Aucun jeu ne correspond à cette recherche. Modifiez les critères ou cliquez sur « Réinitialiser ».</p>
       <ul id="games-list" class="cards"></ul>
     </section>
 

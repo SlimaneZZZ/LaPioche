@@ -107,7 +107,11 @@ async function request(method, path, body) {
 }
 
 export const api = {
-  listGames: () => request("GET", "/games"),
+  // `search` : { q, players, maxDuration }, seuls les critères fournis sont envoyés.
+  listGames: (search = {}) => {
+    const params = new URLSearchParams(search).toString();
+    return request("GET", params ? `/games?${params}` : "/games");
+  },
   createGame: (game) => request("POST", "/games", game),
   updateGame: (id, game) => request("PUT", `/games/${id}`, game),
   deleteGame: (id) => request("DELETE", `/games/${id}`),

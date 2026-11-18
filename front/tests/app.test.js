@@ -32,6 +32,38 @@ test("with no game, a message invites to add one", async () => {
   assertIncludes(app.$("#games-empty").textContent, "Ajouter un jeu");
 });
 
+test("the search sends the title, the players and the max duration, and ignores invalid values", async () => {
+  const app = await mountApp({ "GET /games": [catan, dixit] });
+  await waitFor(() => app.$$("#games-list .card").length === 2);
+  const fields = app.$("#game-filters").elements;
+  app.type(fields.q, " cat ");
+  app.type(fields.players, "4");
+  app.type(fields.maxDuration, "60");
+  await waitFor(() => app.calls.at(-1).search === "?q=cat&players=4&maxDuration=60", "les trois critères envoyés");
+
+  // Des valeurs que l'API refuserait ne sont jamais envoyées.
+  for (const invalid of ["0", "-3", "2.5"]) {
+    app.type(fields.players, invalid);
+    await waitFor(() => app.calls.at(-1).search === "?q=cat&maxDuration=60", `« ${invalid} » ignoré`);
+  }
+});
+
+test("a search without result has its own message, and the reset button shows every game again", async () => {
+  const app = await mountApp({ "GET /games?q=zzz": [], "GET /games": [catan, dixit] });
+  await waitFor(() => app.$$("#games-list .card").length === 2);
+  app.type(app.$("#game-filters").elements.q, "zzz");
+  await waitFor(() => !app.$("#games-no-match").hidden, "message de recherche sans résultat");
+  assertIncludes(app.$("#games-no-match").textContent, "Aucun jeu ne correspond");
+  assertTrue(app.$("#games-empty").hidden, "le message de ludothèque vide ne doit pas s'afficher");
+  assertEqual(app.$$("#games-list .card").length, 0);
+
+  app.click("Réinitialiser");
+  await waitFor(() => app.$$("#games-list .card").length === 2, "tous les jeux de nouveau");
+  assertEqual(app.$("#game-filters").elements.q.value, "");
+  assertEqual(app.calls.at(-1).search, "");
+  assertTrue(app.$("#games-no-match").hidden, "le message de recherche disparaît");
+});
+
 test("adding a game posts the form then reloads the list", async () => {
   const app = await mountApp({ "GET /games": [catan], "POST /games": [201, { ...catan, id: "g3", title: "Dixit" }] });
   await waitFor(() => app.$$("#games-list .card").length === 1);

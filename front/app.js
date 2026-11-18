@@ -93,9 +93,50 @@ window.addEventListener("hashchange", refresh);
 
 // --- Jeux ------------------------------------------------------------------
 
+// --- Recherche de jeux
+
+const searchForm = $("#game-filters");
+
+// Un entier strictement positif, ou null : l'API refuserait toute autre valeur.
+function positiveInteger(text) {
+  const value = Number(text.trim());
+  return text.trim() !== "" && Number.isInteger(value) && value > 0 ? value : null;
+}
+
+// Les critères à envoyer : un champ vide ou invalide est simplement ignoré.
+function gameSearch() {
+  const search = {};
+  const q = searchForm.elements.q.value.trim();
+  if (q) search.q = q;
+  for (const name of ["players", "maxDuration"]) {
+    const value = positiveInteger(searchForm.elements[name].value);
+    if (value !== null) search[name] = value;
+  }
+  return search;
+}
+
+// La liste se met à jour à chaque frappe, dans n'importe quel champ du formulaire.
+searchForm.addEventListener("input", () => run(loadGames));
+// Entrée dans un champ : pas de rechargement de la page.
+searchForm.addEventListener("submit", (event) => event.preventDefault());
+$("#reset-search").addEventListener("click", () => {
+  searchForm.reset();
+  run(loadGames);
+});
+
+// Numéro de la dernière recherche lancée : si l'on tape vite, les réponses
+// peuvent arriver dans le désordre, et seule la plus récente doit s'afficher.
+let latestGamesRequest = 0;
+
 async function loadGames() {
-  const games = await api.listGames();
-  $("#games-empty").hidden = games.length > 0;
+  const search = gameSearch();
+  const requestNumber = ++latestGamesRequest;
+  const games = await api.listGames(search);
+  if (requestNumber !== latestGamesRequest) return; // une recherche plus récente est partie entre-temps
+
+  const isSearching = Object.keys(search).length > 0;
+  $("#games-empty").hidden = games.length > 0 || isSearching;
+  $("#games-no-match").hidden = games.length > 0 || !isSearching;
   $("#games-list").replaceChildren(...games.map(gameCard));
 }
 
