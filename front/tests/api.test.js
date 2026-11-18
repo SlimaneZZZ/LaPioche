@@ -40,6 +40,12 @@ test("listGames sends only the search criteria provided", async () => {
   assertEqual(calls[1].search, "");
 });
 
+test("listGames sends the availability filter with the other criteria", async () => {
+  const { fetch, calls } = fakeApi({ "GET /games": [] });
+  await withFakeFetch(fetch, () => api.listGames({ q: "cat", available: true }));
+  assertEqual(calls[0].search, "?q=cat&available=true");
+});
+
 test("createGame sends a JSON POST", async () => {
   const { fetch, calls } = fakeApi({ "POST /games": [201, { id: "1" }] });
   const game = { title: "Catan", minPlayers: 3, maxPlayers: 4, durationMinutes: 90 };

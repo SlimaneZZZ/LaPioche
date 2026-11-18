@@ -112,6 +112,8 @@ function gameSearch() {
     const value = positiveInteger(searchForm.elements[name].value);
     if (value !== null) search[name] = value;
   }
+  // Case décochée : aucun filtre (on ne demande pas « les jeux empruntés »).
+  if (searchForm.elements.available.checked) search.available = true;
   return search;
 }
 

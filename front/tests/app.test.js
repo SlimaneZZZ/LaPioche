@@ -64,6 +64,22 @@ test("a search without result has its own message, and the reset button shows ev
   assertTrue(app.$("#games-no-match").hidden, "le message de recherche disparaît");
 });
 
+test("the 'available only' box filters the list at once and combines with the search", async () => {
+  const app = await mountApp({ "GET /games?available=true": [catan], "GET /games": [catan, dixit] });
+  await waitFor(() => app.$$("#games-list .card").length === 2);
+  const fields = app.$("#game-filters").elements;
+
+  fields.available.click();
+  await waitFor(() => app.$$("#games-list .card").length === 1, "seul le jeu disponible reste");
+  assertEqual(app.calls.at(-1).search, "?available=true");
+
+  app.type(fields.q, "cat");
+  await waitFor(() => app.calls.at(-1).search === "?q=cat&available=true", "combiné avec le titre");
+
+  fields.available.click();
+  await waitFor(() => app.calls.at(-1).search === "?q=cat", "case décochée : plus de filtre de disponibilité");
+});
+
 test("adding a game posts the form then reloads the list", async () => {
   const app = await mountApp({ "GET /games": [catan], "POST /games": [201, { ...catan, id: "g3", title: "Dixit" }] });
   await waitFor(() => app.$$("#games-list .card").length === 1);
