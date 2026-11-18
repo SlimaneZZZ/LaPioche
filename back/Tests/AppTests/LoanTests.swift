@@ -95,6 +95,53 @@ final class LoanTests: XCTestCase {
         }
     }
 
+    // MARK: - GET /loans/overdue
+
+    func testOverdueListsOnlyUnreturnedPastDueLoansMostOverdueFirst() async throws {
+        try await withApp { app in
+            let catan = try await createGame(app, title: "Catan")
+            let dixit = try await createGame(app, title: "Dixit")
+            let azul = try await createGame(app, title: "Azul")
+            let skyjo = try await createGame(app, title: "Skyjo")
+            let member = try await createMember(app)
+            let memberID = try XCTUnwrap(member.id)
+            let day: TimeInterval = 86_400
+            let now = Date()
+
+            // Overdue by 2 days.
+            try await insertLoan(app, gameID: try XCTUnwrap(catan.id), memberID: memberID,
+                                 borrowedAt: now - 16 * day, dueAt: now - 2 * day)
+            // Overdue by 10 days: must come first.
+            try await insertLoan(app, gameID: try XCTUnwrap(dixit.id), memberID: memberID,
+                                 borrowedAt: now - 24 * day, dueAt: now - 10 * day)
+            // Past due but returned: never overdue.
+            try await insertLoan(app, gameID: try XCTUnwrap(azul.id), memberID: memberID,
+                                 borrowedAt: now - 30 * day, dueAt: now - 16 * day, returnedAt: now - 1 * day)
+            // Ongoing, not due yet.
+            try await insertLoan(app, gameID: try XCTUnwrap(skyjo.id), memberID: memberID,
+                                 borrowedAt: now, dueAt: now + 14 * day)
+
+            try await app.test(.GET, "loans/overdue", afterResponse: { res async throws in
+                XCTAssertEqual(res.status, .ok)
+                let loans = try res.content.decode([LoanDTO].self)
+                XCTAssertEqual(loans.map(\.gameID), [dixit.id, catan.id])
+            })
+        }
+    }
+
+    func testOverdueIsEmptyWhenNothingIsLate() async throws {
+        try await withApp { app in
+            let game = try await createGame(app)
+            let member = try await createMember(app)
+            try await borrow(app, gameID: try XCTUnwrap(game.id), memberID: try XCTUnwrap(member.id)) { _ in }
+
+            try await app.test(.GET, "loans/overdue", afterResponse: { res async throws in
+                XCTAssertEqual(res.status, .ok)
+                XCTAssertEqual(try res.content.decode([LoanDTO].self).count, 0)
+            })
+        }
+    }
+
     // MARK: - POST /loans/:loanID/return
 
     func testReturningALoanSetsReturnedAtAndMakesTheGameAvailable() async throws {

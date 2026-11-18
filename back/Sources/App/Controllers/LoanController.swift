@@ -5,7 +5,19 @@ struct LoanController: RouteCollection {
     func boot(routes: any RoutesBuilder) throws {
         let loans = routes.grouped("loans")
         loans.post(use: create)
+        loans.get("overdue", use: overdue)
         loans.post(":loanID", "return", use: giveBack)
+    }
+
+    @Sendable
+    func overdue(req: Request) async throws -> [LoanDTO] {
+        // Not returned and past due. A returned loan is never overdue.
+        try await Loan.query(on: req.db)
+            .filter(\.$returnedAt == nil)
+            .filter(\.$dueAt < Date())
+            .sort(\.$dueAt, .ascending) // the oldest due date is the most overdue
+            .all()
+            .map { $0.toDTO() }
     }
 
     @Sendable
