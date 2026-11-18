@@ -237,6 +237,7 @@ function memberRow(member) {
     el(
       "div",
       { class: "actions" },
+      button("Emprunts", () => openMemberLoans(member)),
       button("Modifier", () => openMemberDialog(member)),
       button("Supprimer", () => openDeleteMemberDialog(member), "danger"),
     ),
@@ -282,5 +283,42 @@ bindSubmit(deleteMemberDialog, deleteMemberForm, async () => {
   await api.deleteMember(deletedMember.id);
   toast(`« ${deletedMember.name} » a été supprimé·e.`);
 });
+
+// --- Emprunts d'un·e adhérent·e --------------------------------------------
+
+const memberLoansDialog = $("#member-loans-dialog");
+
+// L'état n'est pas stocké : il se déduit des dates, comme la disponibilité côté API.
+function loanState(loan, now = new Date()) {
+  if (loan.returnedAt) return { label: "Rendu", badge: "ok", isLate: false };
+  if (new Date(loan.dueAt) < now) return { label: "En retard", badge: "late", isLate: true };
+  return { label: "En cours", badge: "busy", isLate: false };
+}
+
+function loanRow(loan, gameTitle) {
+  const state = loanState(loan);
+  const dates = [`Emprunté le ${formatDate(loan.borrowedAt)}`, `retour prévu le ${formatDate(loan.dueAt)}`];
+  if (loan.returnedAt) dates.push(`rendu le ${formatDate(loan.returnedAt)}`);
+  return el(
+    "li",
+    { class: state.isLate ? "row late" : "row" },
+    el("div", { class: "row-main" }, el("p", {}, el("strong", {}, gameTitle)), el("p", { class: "meta" }, dates.join(" · "))),
+    el("span", { class: `badge ${state.badge}` }, state.label),
+  );
+}
+
+async function openMemberLoans(member) {
+  await run(async () => {
+    // Les emprunts ne contiennent que l'identifiant du jeu : on charge aussi les jeux pour afficher leur titre.
+    const [loans, games] = await Promise.all([api.listMemberLoans(member.id), api.listGames()]);
+    const titles = new Map(games.map((game) => [game.id, game.title]));
+    $("#member-loans-title").textContent = `Emprunts de ${member.name}`;
+    $("#member-loans-empty").hidden = loans.length > 0;
+    $("#member-loans-list").replaceChildren(
+      ...loans.map((loan) => loanRow(loan, titles.get(loan.gameID) ?? "Jeu inconnu")),
+    );
+    memberLoansDialog.showModal();
+  });
+}
 
 refresh();
