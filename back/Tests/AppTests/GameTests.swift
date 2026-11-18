@@ -104,6 +104,42 @@ final class GameTests: XCTestCase {
         }
     }
 
+    func testFilterGamesByAvailabilityCombinedWithSearch() async throws {
+        try await withApp { app in
+            let catan = try await createGame(app, title: "Catan")
+            _ = try await createGame(app, title: "Catan Junior")
+            _ = try await createGame(app, title: "Dixit")
+            let camille = try await createMember(app)
+            let now = Date()
+            // Catan is on loan; the others are available.
+            try await insertLoan(app, gameID: try XCTUnwrap(catan.id), memberID: try XCTUnwrap(camille.id),
+                                 borrowedAt: now, dueAt: now + 14 * 24 * 60 * 60)
+
+            try await app.test(.GET, "games?available=true", afterResponse: { res async throws in
+                XCTAssertEqual(res.status, .ok)
+                let titles = try res.content.decode([GameDTO].self).map(\.title)
+                XCTAssertEqual(Set(titles), ["Catan Junior", "Dixit"])
+            })
+            try await app.test(.GET, "games?available=false", afterResponse: { res async throws in
+                XCTAssertEqual(try res.content.decode([GameDTO].self).map(\.title), ["Catan"])
+            })
+            // Combined with FEAT-06: available games whose title contains "catan".
+            try await app.test(.GET, "games?q=catan&available=true", afterResponse: { res async throws in
+                XCTAssertEqual(try res.content.decode([GameDTO].self).map(\.title), ["Catan Junior"])
+            })
+        }
+    }
+
+    func testFilterGamesByAvailabilityRejectsAnythingButTrueOrFalse() async throws {
+        try await withApp { app in
+            for value in ["yes", "1", "on", ""] {
+                try await app.test(.GET, "games?available=\(value)", afterResponse: { res async throws in
+                    XCTAssertEqual(res.status, .badRequest, value)
+                })
+            }
+        }
+    }
+
     func testShowGame() async throws {
         try await withApp { app in
             let game = try await createGame(app)

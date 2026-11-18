@@ -31,6 +31,11 @@ struct GameController: RouteCollection {
         if let text = search.q, !text.isEmpty {
             games = games.filter { $0.title.range(of: text, options: .caseInsensitive) != nil }
         }
+        // Availability is computed from the loans (never stored), so it is
+        // filtered in Swift too.
+        if let available = search.available {
+            games = games.filter { $0.isAvailable == available }
+        }
         return games.map { $0.toDTO() }
     }
 
