@@ -188,6 +188,54 @@ test("a failed return is shown in French", async () => {
   await waitFor(() => app.$("#toasts").textContent.includes("Cet emprunt a déjà été rendu."), "le message d'erreur en français");
 });
 
+// --- Emprunts en retard
+
+// Une date prévue il y a 3 jours, à midi : le calcul en jours calendaires donne toujours 3.
+function daysAgoAtNoon(days) {
+  const date = new Date();
+  date.setDate(date.getDate() - days);
+  date.setHours(12, 0, 0, 0);
+  return date.toISOString();
+}
+
+test("overdue loans show the game, the member, the due date and the days late in words", async () => {
+  const lateLoan = { id: "l1", gameID: "g1", memberID: "m1", borrowedAt: daysAgoAtNoon(17), dueAt: daysAgoAtNoon(3) };
+  const app = await mountApp(
+    { "GET /loans/overdue": [lateLoan], "GET /games": [catan], "GET /members": [camille] },
+    { hash: "#overdue" },
+  );
+  await waitFor(() => app.$$("#overdue-list .row").length === 1, "une ligne en retard");
+  const row = app.$("#overdue-list .row");
+  assertIncludes(row.textContent, "Catan");
+  assertIncludes(row.textContent, "Camille");
+  assertIncludes(row.textContent, "retour prévu le");
+  assertEqual(row.querySelector(".badge").textContent, "3 jours de retard");
+  assertTrue(row.classList.contains("late"), "la ligne est aussi mise en évidence visuellement");
+  assertTrue(app.$("#overdue-empty").hidden, "pas de message « aucun retard »");
+});
+
+test("the overdue counter is visible without opening the overdue view", async () => {
+  const late = { gameID: "g1", memberID: "m1", borrowedAt: daysAgoAtNoon(20), dueAt: daysAgoAtNoon(6) };
+  const app = await mountApp({
+    "GET /games": [catan],
+    "GET /loans/overdue": [{ ...late, id: "l1" }, { ...late, id: "l2" }],
+  });
+  await waitFor(() => !app.$("#overdue-count").hidden, "le compteur de retards");
+  assertEqual(app.$("#overdue-count").textContent, "2");
+  assertTrue(app.$("#overdue").hidden, "la vue des retards n'est pas ouverte");
+});
+
+test("with nothing overdue, a message says so and the counter is hidden", async () => {
+  const app = await mountApp(
+    { "GET /loans/overdue": [], "GET /games": [catan], "GET /members": [camille] },
+    { hash: "#overdue" },
+  );
+  await waitFor(() => !app.$("#overdue-empty").hidden, "le message « aucun retard »");
+  assertIncludes(app.$("#overdue-empty").textContent, "Aucun emprunt en retard");
+  assertEqual(app.$$("#overdue-list .row").length, 0);
+  assertTrue(app.$("#overdue-count").hidden, "le compteur est caché quand il n'y a aucun retard");
+});
+
 // --- Adhérent·es
 
 test("members tab lists the members", async () => {

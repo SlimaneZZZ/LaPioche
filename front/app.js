@@ -69,7 +69,9 @@ function bindSubmit(dialog, form, handler) {
 
 // --- Onglets ---------------------------------------------------------------
 
-const tabs = ["games", "members"];
+// Chaque onglet et la fonction qui charge son contenu.
+const loaders = { games: () => loadGames(), members: () => loadMembers(), overdue: () => loadOverdue() };
+const tabs = Object.keys(loaders);
 
 function currentTab() {
   const name = location.hash.slice(1);
@@ -82,7 +84,9 @@ async function refresh() {
     $(`#${name}`).hidden = name !== tab;
     $(`[data-tab="${name}"]`).toggleAttribute("aria-current", name === tab);
   }
-  await run(tab === "games" ? loadGames : loadMembers);
+  await run(loaders[tab]);
+  // Le compteur de retards reste visible quel que soit l'onglet affiché.
+  await updateOverdueCount();
 }
 
 window.addEventListener("hashchange", refresh);
@@ -217,8 +221,62 @@ async function returnGame(game) {
     const loan = await findOngoingLoan(game);
     await api.returnLoan(loan.id);
     toast(`« ${game.title} » a été rendu.`);
-    await loadGames();
+    await refresh(); // met aussi à jour le compteur de retards
   });
+}
+
+// --- Emprunts en retard ------------------------------------------------------
+
+const DAY = 24 * 60 * 60 * 1000; // une journée en millisecondes
+
+// Nombre de jours calendaires entre la date prévue et aujourd'hui (au moins 1).
+function daysLate(dueAt, now = new Date()) {
+  const startOfDay = (date) => new Date(date.getFullYear(), date.getMonth(), date.getDate());
+  const days = Math.round((startOfDay(now) - startOfDay(new Date(dueAt))) / DAY);
+  return Math.max(1, days);
+}
+
+function setOverdueCount(count) {
+  const badge = $("#overdue-count");
+  badge.textContent = String(count);
+  badge.hidden = count === 0;
+}
+
+// Le compteur est une information d'appoint : s'il ne peut pas être chargé,
+// on le cache simplement, sans afficher d'erreur.
+async function updateOverdueCount() {
+  try {
+    setOverdueCount((await api.listOverdueLoans()).length);
+  } catch {
+    $("#overdue-count").hidden = true;
+  }
+}
+
+function overdueRow(loan, gameTitle, memberName) {
+  const days = daysLate(loan.dueAt);
+  return el(
+    "li",
+    { class: "row late" },
+    el(
+      "div",
+      { class: "row-main" },
+      el("p", {}, el("strong", {}, gameTitle)),
+      el("p", { class: "meta" }, `${memberName} · retour prévu le ${formatDate(loan.dueAt)}`),
+    ),
+    // Le retard est écrit en toutes lettres : il ne repose pas sur la couleur seule.
+    el("span", { class: "badge late" }, `${days} jour${days > 1 ? "s" : ""} de retard`),
+  );
+}
+
+async function loadOverdue() {
+  const [loans, games, members] = await Promise.all([api.listOverdueLoans(), api.listGames(), api.listMembers()]);
+  const titles = new Map(games.map((game) => [game.id, game.title]));
+  const names = new Map(members.map((member) => [member.id, member.name]));
+  setOverdueCount(loans.length);
+  $("#overdue-empty").hidden = loans.length > 0;
+  $("#overdue-list").replaceChildren(
+    ...loans.map((loan) => overdueRow(loan, titles.get(loan.gameID) ?? "Jeu inconnu", names.get(loan.memberID) ?? "Adhérent·e inconnu·e")),
+  );
 }
 
 // --- Adhérent·es -----------------------------------------------------------

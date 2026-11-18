@@ -78,6 +78,12 @@ test("listMemberLoans and returnLoan call their routes", async () => {
   assertEqual(calls[1].body, undefined);
 });
 
+test("listOverdueLoans calls GET /loans/overdue", async () => {
+  const { fetch, calls } = fakeApi({ "GET /loans/overdue": [] });
+  await withFakeFetch(fetch, () => api.listOverdueLoans());
+  assertEqual(`${calls[0].method} ${calls[0].path}`, "GET /loans/overdue");
+});
+
 test("borrow sends the game and the member", async () => {
   const { fetch, calls } = fakeApi({ "POST /loans": [201, { id: "l1" }] });
   await withFakeFetch(fetch, () => api.borrow("g1", "m1"));
